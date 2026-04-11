@@ -63,6 +63,7 @@ const BookingPage: React.FC<BookingPageProps> = ({ gyms, user, setBookings }) =>
     // Private Session State
     const [availableSlots, setAvailableSlots] = useState<TrainerSchedule[]>([]);
     const [selectedTime, setSelectedTime] = useState<{ start: string; end: string } | null>(null);
+    const [allTrainerSchedules, setAllTrainerSchedules] = useState<Record<string, TrainerSchedule[]>>({});
 
     const getDayName = (dateStr: string) => {
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -163,6 +164,17 @@ const BookingPage: React.FC<BookingPageProps> = ({ gyms, user, setBookings }) =>
                 setStartDate(foundGym.startDate);
                 if (foundGym.endDate) setEndDate(foundGym.endDate);
             }
+            
+            // Load schedules for all trainers
+            const loadAllSchedules = async () => {
+                const schedulesMap: Record<string, TrainerSchedule[]> = {};
+                for (const t of foundGym.trainers) {
+                    const schedules = await getTrainerSchedules(t.id);
+                    schedulesMap[t.id] = schedules;
+                }
+                setAllTrainerSchedules(schedulesMap);
+            };
+            loadAllSchedules();
         } else {
             navigate('/');
         }
@@ -554,16 +566,36 @@ const BookingPage: React.FC<BookingPageProps> = ({ gyms, user, setBookings }) =>
                                                 <div
                                                     key={t.id}
                                                     onClick={() => setSelectedTrainer(t)}
-                                                    className={`flex items-center gap-4 p-3 border-2 cursor-pointer transition-colors ${selectedTrainer?.id === t.id ? 'border-brand-charcoal bg-brand-bone' : 'border-gray-100 hover:border-brand-blue'}`}
+                                                    className={`p-3 border-2 cursor-pointer transition-colors ${selectedTrainer?.id === t.id ? 'border-brand-charcoal bg-brand-bone' : 'border-gray-100 hover:border-brand-blue'}`}
                                                 >
-                                                    <div className="w-10 h-10 bg-gray-200 overflow-hidden">
-                                                        <img src={t.image} alt={t.name} className="w-full h-full object-cover grayscale" />
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-10 h-10 bg-gray-200 overflow-hidden">
+                                                            <img src={t.image} alt={t.name} className="w-full h-full object-cover grayscale" />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className="font-bold text-sm uppercase">{t.name}</div>
+                                                            <Mono className="text-[10px] text-gray-500">{t.specialty}</Mono>
+                                                        </div>
+                                                        <div className="font-mono text-xs font-bold">+฿{t.pricePerSession}</div>
                                                     </div>
-                                                    <div className="flex-1">
-                                                        <div className="font-bold text-sm uppercase">{t.name}</div>
-                                                        <Mono className="text-[10px] text-gray-500">{t.specialty}</Mono>
-                                                    </div>
-                                                    <div className="font-mono text-xs font-bold">+฿{t.pricePerSession}</div>
+                                                    {allTrainerSchedules[t.id] && allTrainerSchedules[t.id].length > 0 && (
+                                                        <div className="mt-3 pt-2 border-t border-gray-200/50">
+                                                            <div className="font-mono text-[9px] font-bold text-brand-blue mb-1 uppercase">Available Schedule:</div>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {Object.entries(
+                                                                    allTrainerSchedules[t.id].reduce((acc, curr) => {
+                                                                        if (!acc[curr.dayOfWeek]) acc[curr.dayOfWeek] = [];
+                                                                        acc[curr.dayOfWeek].push(`${curr.startTime}-${curr.endTime}`);
+                                                                        return acc;
+                                                                    }, {} as Record<string, string[]>)
+                                                                ).map(([day, slots]) => (
+                                                                    <span key={day} className="bg-white border border-gray-200 text-[9px] font-mono px-1.5 py-0.5 text-gray-500">
+                                                                        <span className="font-bold text-brand-charcoal">{(day as string).substring(0,3)}:</span> {slots.join(', ')}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>

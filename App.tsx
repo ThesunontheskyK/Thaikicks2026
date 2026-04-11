@@ -1112,23 +1112,6 @@ const App: React.FC = () => {
     // Handle Password Recovery Event
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
-        // Redirect to reset password page is handled via HashRouter generally, 
-        // but we can force it here if base URL landed on home.
-        // However, since we are using HashRouter, the link from email usually points to /#access_token=...
-        // Supabase automatically sets the session. We just need to detect we want to show the reset page.
-        // A simple way is to check the URL hash or let the user navigate, but for UX:
-        // We'll let the router handle a specific route '/reset-password' if we set up the email template to point there?
-        // OR we just rely on the user being logged in and maybe a special query param?
-        // Standard Supabase flow: Click Link -> App Opens -> 'PASSWORD_RECOVERY' event fires.
-        // So we should navigate to /reset-password
-        // Since we are outside Router context here (in App functional component but not under <Routes>), 
-        // we can't use useNavigate easily unless we restructure.
-        // BUT App IS inside HashRouter in the return but fetch logic is here.
-        // Actually, App is INSIDE HashRouter? No, HashRouter is inside App return.
-        // Wait, <HashRouter> is WRAPPING the content of App.
-        // So `useNavigate` can't be used at top level of App.
-
-        // Fix: We'll change the window location hash manualy
         window.location.hash = '/reset-password';
       }
     });
@@ -1154,7 +1137,7 @@ const App: React.FC = () => {
             console.log("Realtime: User Profile Updated!", payload);
             // Re-fetch clean user data when DB changes
             supabase.auth.getSession().then(({ data: { session } }) => {
-              if (session) handleUserUpdate(session);
+              if (session) handleUserUpdate(session, false, true);
             });
           }
         )
@@ -1168,12 +1151,16 @@ const App: React.FC = () => {
     };
     loadGyms();
 
+    // Track user ID inside the effect closure to prevent unnecessary refetches when tab is focused
+    let currentUserId: string | null = null;
+
     // 2. Auth Logic (Merged)
-    const handleUserUpdate = async (session: any, forceUpdate = false) => {
+    const handleUserUpdate = async (session: any, forceUpdate = false, isProfileSync = false) => {
       if (!session?.user) {
         // Don't clear user state unless it's a forced update (actual logout)
         // This prevents clearing state during token refresh
         if (forceUpdate && mounted) {
+          currentUserId = null;
           setActiveUser(null);
           setBookings([]);
           setIsAuthChecking(false);
@@ -1182,6 +1169,12 @@ const App: React.FC = () => {
           setIsAuthChecking(false);
         }
         return;
+      }
+
+      // If the user hasn't changed and it's not a forced profile sync, do not refetch everything
+      if (!forceUpdate && !isProfileSync && currentUserId === session.user.id) {
+         if (mounted) setIsAuthChecking(false);
+         return; 
       }
 
       const basicUser: User = {
@@ -1195,15 +1188,10 @@ const App: React.FC = () => {
         affiliateStatus: 'none'
       };
 
-      // Only set basicUser if we don't have an activeUser yet (initial load)
-      // This prevents role flickering when tab regains focus
-      if (mounted && !activeUser) {
+      if (mounted && currentUserId !== session.user.id) {
         setActiveUser(basicUser);
         setupProfileSubscription(session.user.id);
-      } else if (mounted && activeUser.id !== session.user.id) {
-        // Different user logged in, update
-        setActiveUser(basicUser);
-        setupProfileSubscription(session.user.id);
+        currentUserId = session.user.id;
       }
 
       try {
@@ -1226,16 +1214,6 @@ const App: React.FC = () => {
                 if (mounted) setApplications(apps);
               });
             }
-            // Logic for specific "Gym Owner" scoped dashboard disabled temporarily as per request
-            /* 
-            else if (fullUser.role === 'gymowner') {
-               const latestGyms = await getGyms();
-               const myGym = latestGyms.find(g => g.ownerId === fullUser.id);
-               if (myGym) {
-                  bookingsToShow = await getGymBookings(myGym.id);
-               }
-            }
-            */
           }
           setBookings(bookingsToShow);
           const { getProducts } = await import('./services/shopService');

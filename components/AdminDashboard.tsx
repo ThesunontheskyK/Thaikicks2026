@@ -1142,8 +1142,88 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ gyms, setGyms, bookings
               </div>
 
               <textarea className="w-full border-2 border-brand-charcoal p-4 font-mono text-sm h-32" placeholder="DESCRIPTION" value={editingGym?.description || ''} onChange={e => setEditingGym({...editingGym, description: e.target.value})}></textarea>
+              
+              {/* Trainers Section only visible when editing existing gym */}
+              {editingGym?.id && (
+                  <div className="pt-6 border-t-2 border-brand-charcoal border-dashed space-y-4">
+                      <h4 className="font-black text-sm uppercase text-brand-charcoal">Trainers Roster</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[250px] overflow-y-auto">
+                          {gyms.find(g => g.id === editingGym.id)?.trainers?.map((t: Trainer) => (
+                              <div key={t.id} className="flex justify-between items-center bg-gray-50 border-2 border-brand-charcoal p-3">
+                                  <div className="font-bold uppercase text-sm">{t.name} <span className="font-mono text-[10px] text-gray-500 font-normal ml-1">({t.specialty})</span></div>
+                                  <div className="flex gap-4">
+                                      <button type="button" onClick={async () => {
+                                          setManagingScheduleFor(t);
+                                          setTrainerSchedules(await getTrainerSchedules(t.id));
+                                      }} className="text-brand-blue font-black uppercase hover:underline text-[10px]">Schedule</button>
+                                      <button type="button" onClick={async () => {
+                                          if (confirm('Remove trainer?')) {
+                                              await deleteTrainer(t.id);
+                                              await loadGyms();
+                                          }
+                                      }} className="text-brand-red font-black uppercase hover:underline text-[10px]">Del</button>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                      <div className="flex flex-col md:flex-row gap-4 border-2 border-brand-charcoal p-4 bg-brand-bone">
+                          <input className="border-2 border-brand-charcoal focus:border-brand-blue outline-none text-sm flex-1 font-mono p-3" placeholder="NEW TRAINER NAME" value={newTrainer.name} onChange={e => setNewTrainer({ ...newTrainer, name: e.target.value })} />
+                          <input className="border-2 border-brand-charcoal focus:border-brand-blue outline-none text-sm w-full md:w-1/3 font-mono p-3" placeholder="SPECIALTY" value={newTrainer.specialty} onChange={e => setNewTrainer({ ...newTrainer, specialty: e.target.value })} />
+                          <button type="button" onClick={async () => {
+                              if (newTrainer.name && editingGym.id) {
+                                  await createTrainer({ ...newTrainer, gymId: editingGym.id, pricePerSession: 500 } as any);
+                                  setNewTrainer({ name: '', specialty: '', pricePerSession: 500, image: '' });
+                                  await loadGyms();
+                              }
+                          }} className="bg-brand-charcoal text-white px-8 font-black text-sm uppercase hover:bg-brand-blue transition-colors">Add Trainer</button>
+                      </div>
+                  </div>
+              )}
+
               <button type="submit" className="w-full bg-brand-red text-white py-4 font-black uppercase hover:bg-brand-charcoal transition-colors">Save Listing</button>
             </form>
+            
+            {/* TRAINER SCHEDULE MODAL */}
+            {managingScheduleFor && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-brand-charcoal/90 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-lg border-4 border-brand-charcoal shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)]">
+                        <div className="p-4 border-b-2 border-brand-charcoal bg-brand-bone flex justify-between items-center">
+                            <h2 className="font-black uppercase tracking-widest text-sm">Schedule: {managingScheduleFor.name}</h2>
+                            <button onClick={() => setManagingScheduleFor(null)} className="hover:text-brand-red"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            <div className="space-y-2">
+                                {trainerSchedules.length === 0 && <p className="text-xs font-mono text-gray-500">No schedules set.</p>}
+                                {trainerSchedules.map(ts => (
+                                    <div key={ts.id} className="flex justify-between items-center border-b border-gray-100 py-2">
+                                        <div className="font-mono text-sm font-bold uppercase">{ts.dayOfWeek}: {ts.startTime} - {ts.endTime}</div>
+                                        <button onClick={async () => {
+                                            await deleteTrainerSchedule(ts.id);
+                                            setTrainerSchedules(await getTrainerSchedules(managingScheduleFor.id));
+                                        }} className="text-brand-red hover:underline font-black text-[10px] uppercase">Remove</button>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 bg-gray-50 p-4 border border-gray-200">
+                                <select className="border border-brand-charcoal p-2 text-xs font-mono" value={newSchedule.day} onChange={e => setNewSchedule({ ...newSchedule, day: e.target.value })}>
+                                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => <option key={d}>{d}</option>)}
+                                </select>
+                                <input type="time" className="border border-brand-charcoal p-2 text-xs font-mono" value={newSchedule.start} onChange={e => setNewSchedule({ ...newSchedule, start: e.target.value })} />
+                                <input type="time" className="border border-brand-charcoal p-2 text-xs font-mono" value={newSchedule.end} onChange={e => setNewSchedule({ ...newSchedule, end: e.target.value })} />
+                                <button onClick={async () => {
+                                    await createTrainerSchedule({
+                                        trainerId: managingScheduleFor.id,
+                                        dayOfWeek: newSchedule.day,
+                                        startTime: newSchedule.start,
+                                        endTime: newSchedule.end
+                                    } as any);
+                                    setTrainerSchedules(await getTrainerSchedules(managingScheduleFor.id));
+                                }} className="col-span-3 mt-2 bg-brand-charcoal text-white font-black text-xs uppercase py-2 hover:bg-brand-blue">Add Slot</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
           </div>
         </div>
       )}
